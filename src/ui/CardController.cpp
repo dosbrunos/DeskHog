@@ -1,5 +1,6 @@
 #include "ui/CardController.h"
 #include "ui/PaddleCard.h"
+#include "ui/CryptoPricesCard.h"
 #include <algorithm>
 
 QueueHandle_t CardController::uiQueue = nullptr;
@@ -381,6 +382,27 @@ void CardController::initializeCardTypes() {
         return nullptr;
     };
     registerCardType(paddleDef);
+
+    // Register CRYPTO_PRICES card type
+    CardDefinition cryptoDef;
+    cryptoDef.type = CardType::CRYPTO_PRICES;
+    cryptoDef.name = "Crypto Prices";
+    cryptoDef.allowMultiple = true;
+    cryptoDef.needsConfigInput = true;
+    cryptoDef.configInputLabel = "Coin IDs (csv: bitcoin,ethereum,solana)";
+    cryptoDef.uiDescription = "Shows live EUR/USD for selected coins";
+    cryptoDef.factory = [this](const String& configValue) -> lv_obj_t* {
+        auto* newCard = new CryptoPricesCard(screen, configValue);
+        if (newCard && newCard->getCard()) {
+            CardInstance instance{newCard, newCard->getCard()};
+            dynamicCards[CardType::CRYPTO_PRICES].push_back(instance);
+            cardStack->registerInputHandler(newCard->getCard(), newCard);
+            return newCard->getCard();
+        }
+        delete newCard;
+        return nullptr;
+    };
+    registerCardType(cryptoDef);
 }
 
 void CardController::handleCardConfigChanged() {
