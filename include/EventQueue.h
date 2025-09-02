@@ -25,7 +25,26 @@ enum class EventType {
     OTA_PROCESS_START,
     OTA_PROCESS_END,
     CARD_CONFIG_CHANGED,
-    CARD_TITLE_UPDATED
+    CARD_TITLE_UPDATED,
+    CARD_TITLE_UPDATED,
+    CRYPTO_FETCH_REQUEST,   // UI -> background: request prices for CSV ids
+    CRYPTO_FETCH_RESULT     // background -> UI: parsed rows ready to render
+
+};
+
+struct CryptoRow {
+    String symbol;  // "BTC"
+    String eur;     // "25432.12"
+    String usd;     // "27650.51"
+};
+
+struct Event {
+    // existing fields...
+    String title;
+
+    // new generic fields for crypto flow:
+    String csvIds;                  // for CRYPTO_FETCH_REQUEST
+    std::vector<CryptoRow> rows;    // for CRYPTO_FETCH_RESULT
 };
 
 /**
@@ -56,6 +75,13 @@ struct Event {
         e.title = title_text;
         return e;
     }
+
+     // --- New: generic fields for crypto card ---
+    // For CRYPTO_FETCH_REQUEST: csvIds contains "bitcoin,ethereum,solana"
+    // For CRYPTO_FETCH_RESULT: rows contains parsed price strings
+    String csvIds;
+    std::vector<CryptoRow> rows;
+
 };
 
 /**

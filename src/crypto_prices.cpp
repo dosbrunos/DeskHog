@@ -1,10 +1,36 @@
 #include "crypto_prices.h"
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
+// no HTTPClient/ArduinoJson here anymore
+
+// globalUIDispatch is set by CardController; we use it to run LVGL changes on the UI task
+extern std::function<void(std::function<void()>, bool)> globalUIDispatch;
 
 static String trim(const String& s){ String t=s; t.trim(); return t; }
 
-CryptoPricesApp::CryptoPricesApp(const String& csv){ setConfig(csv); }
+CryptoPricesApp::CryptoPricesApp(const String& csv, EventQueue& eq)
+: eventQueue(eq) {
+  setConfig(csv);
+
+  // Subscribe to results; do NOT touch LVGL directly in case this runs off-UI.
+  eventQueue.subscribe([this](const Event& e){
+    if (e.type != EventType::CRYPTO_FETCH_RESULT) return;
+
+    // Marshal LVGL updates onto the UI task
+    if (globalUIDispatch) {
+      // copy rows to avoid dangling temp
+      auto rowsCopy = e.rows;
+      globalUIDispatch([this, rowsCopy]() {
+        renderRows(rowsCopy);
+        // mark not in flight after UI finished rendering (safe)
+        const_cast<CryptoPricesApp*>(this)->fetchInFlight = false;
+      }, true);
+    } else {
+      // Fallback (shouldn't happen once UI queue is set)
+      renderRows(e.rows);
+      fetchInFlight = false;
+    }
+  });
+}
+
 CryptoPricesApp::~CryptoPricesApp(){ cleanup(); }
 
 void CryptoPricesApp::setConfig(const String& csv){
@@ -41,9 +67,9 @@ void CryptoPricesApp::setup(lv_obj_t* parent){
 
   buildList();
 
-  // 60s refresh
-  timer = lv_timer_create([](lv_timer_t* t){ ((CryptoPricesApp*)t->user_data)->fetchAndUpdate(); }, 60000, this);
-  fetchAndUpdate(); // immediate first load
+  // First fetch as soon as the card starts looping
+  nextFetchAt = millis();
+  fetchInFlight = false;
 }
 
 void CryptoPricesApp::buildList(){
@@ -51,49 +77,48 @@ void CryptoPricesApp::buildList(){
   lv_obj_clean(list);
   for (auto& id : ids){
     lv_obj_t* row = lv_label_create(list);
-    lv_label_set_text(row, (id + ": …").c_str());
+    String sym = id; sym.toUpperCase();
+    lv_label_set_text(row, (sym + "  €…  $…").c_str());
     rows.push_back(row);
   }
 }
 
-void CryptoPricesApp::fetchAndUpdate(){
-  if (ids.empty()) return;
+// Called by CardNavigationStack while the card is visible
+void CryptoPricesApp::loop(){
+  const uint32_t now = millis();
+  if (!fetchInFlight && now >= nextFetchAt) {
+    fetchInFlight = true;
+    nextFetchAt = now + 60000; // 60s cadence
 
-  // Build CSV
-  String idsCSV;
-  for (size_t i=0;i<ids.size();++i){ if(i) idsCSV+=','; idsCSV+=ids[i]; }
+    // Publish request; background subscriber (in CardController) will fetch.
+    Event req;
+    req.type = EventType::CRYPTO_FETCH_REQUEST;
+    // Build CSV from ids
+    String csv;
+    for (size_t i=0;i<ids.size();++i){ if(i) csv+=','; csv+=ids[i]; }
+    req.csvIds = csv;
+    eventQueue.publishEvent(req);
+  }
+}
 
-  String url = "https://api.coingecko.com/api/v3/simple/price?ids=" + idsCSV + "&vs_currencies=eur,usd";
-
-  HTTPClient http;
-  http.setTimeout(7000);
-  if (!http.begin(url)) return;
-  int code = http.GET();
-  if (code != 200){ http.end(); return; }
-
-  DynamicJsonDocument doc(8192);
-  auto err = deserializeJson(doc, http.getStream());
-  http.end();
-  if (err) return;
-
-  // Update rows: display "SYM  €…  $…"
-  for (size_t i=0;i<ids.size() && i<rows.size();++i){
-    String id = ids[i];
-    String sym = id; // you can map to BTC/ETH etc if you want
-    sym.toUpperCase();
-
-    String eur = doc[id]["eur"].isNull() ? "-" : String((double)doc[id]["eur"], (double)doc[id]["eur"]>=1.0?2:6);
-    String usd = doc[id]["usd"].isNull() ? "-" : String((double)doc[id]["usd"], (double)doc[id]["usd"]>=1.0?2:6);
-    String line = sym + "  €" + eur + "  $" + usd;
+void CryptoPricesApp::renderRows(const std::vector<CryptoRow>& data){
+  // Update labels with already-formatted strings from background
+  const size_t n = min(rows.size(), data.size());
+  for (size_t i=0;i<n; ++i){
+    const auto& r = data[i];
+    String line = r.symbol + "  €" + r.eur + "  $" + r.usd;
     lv_label_set_text(rows[i], line.c_str());
   }
 }
 
-void CryptoPricesApp::loop(){ /* not needed with timer, keep empty */ }
-
 void CryptoPricesApp::cleanup(){
-  if (timer){ lv_timer_del(timer); timer=nullptr; }
-  if (main_container){ lv_obj_del(main_container); main_container=nullptr; title=nullptr; list=nullptr; rows.clear(); }
+  if (main_container){
+    lv_obj_del(main_container);
+    main_container = nullptr;
+    title = nullptr;
+    list = nullptr;
+    rows.clear();
+  }
 }
 
 lv_obj_t* CryptoPricesApp::get_main_container(){ return main_container; }

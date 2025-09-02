@@ -1,7 +1,7 @@
 #include "ui/CryptoPricesCard.h"
 
-CryptoPricesCard::CryptoPricesCard(lv_obj_t* parent, const String& cfg){
-  app = new CryptoPricesApp(cfg);
+CryptoPricesCard::CryptoPricesCard(lv_obj_t* parent, const String& cfg, EventQueue& eq){
+  app = new CryptoPricesApp(cfg, eq);
   app->setup(parent);
   cardContainer = app->get_main_container();
 }
@@ -17,9 +17,8 @@ CryptoPricesCard::~CryptoPricesCard(){
 
 lv_obj_t* CryptoPricesCard::getCard(){ return cardContainer; }
 
-bool CryptoPricesCard::handleButtonPress(uint8_t){ 
-  // No special navigation; let the stack handle it
-  return false; 
+bool CryptoPricesCard::handleButtonPress(uint8_t){
+  return false;
 }
 
 void CryptoPricesCard::prepareForRemoval(){ markedForRemoval = true; }

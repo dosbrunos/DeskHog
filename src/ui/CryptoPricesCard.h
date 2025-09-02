@@ -1,18 +1,17 @@
 #pragma once
 #include <lvgl.h>
-#include <Arduino.h>
 #include "crypto_prices.h"
-#include "ui/InputHandler.h"   // for handleButtonPress/update signatures (match your project)
+#include "events/EventQueue.h"
 
 class CryptoPricesCard : public InputHandler {
 public:
-  CryptoPricesCard(lv_obj_t* parent, const String& configCSV);
+  CryptoPricesCard(lv_obj_t* parent, const String& cfg, EventQueue& eq);
   ~CryptoPricesCard();
 
   lv_obj_t* getCard();
-  bool handleButtonPress(uint8_t button_index) override; // optional
+  bool handleButtonPress(uint8_t) override;
   void prepareForRemoval();
-  bool update() override;                                 // called by CardNavigationStack
+  bool update() override;
 
 private:
   CryptoPricesApp* app = nullptr;

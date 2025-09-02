@@ -2,6 +2,8 @@
 #include "ui/PaddleCard.h"
 #include "ui/CryptoPricesCard.h"
 #include <algorithm>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 
 QueueHandle_t CardController::uiQueue = nullptr;
 
@@ -117,6 +119,50 @@ void CardController::initialize(DisplayInterface* display) {
             event.type == EventType::WIFI_AP_STARTED) {
             handleWiFiEvent(event);
         }
+    });
+
+    // Subscribe to crypto fetch requests (runs off the UI/LVGL task)
+    eventQueue.subscribe([this](const Event& e) {
+        if (e.type != EventType::CRYPTO_FETCH_REQUEST) return;
+
+        String idsCSV = e.csvIds;
+        if (!idsCSV.length()) return;
+
+        String url = "https://api.coingecko.com/api/v3/simple/price?ids=" + idsCSV + "&vs_currencies=eur,usd";
+
+        HTTPClient http;
+        http.setTimeout(7000);
+        std::vector<CryptoRow> out;
+
+        if (http.begin(url)) {
+            int code = http.GET();
+            if (code == 200) {
+                DynamicJsonDocument doc(8192);
+                if (deserializeJson(doc, http.getStream()) == DeserializationError::Ok) {
+                    // Keep order from the CSV
+                    int start = 0;
+                    while (true) {
+                        int comma = idsCSV.indexOf(',', start);
+                        String id = (comma == -1) ? idsCSV.substring(start) : idsCSV.substring(start, comma);
+                        id.trim();
+                        if (id.length()) {
+                            String sym = id; sym.toUpperCase();
+                            String eur = doc[id]["eur"].isNull() ? "-" : String((double)doc[id]["eur"], (double)doc[id]["eur"] >= 1.0 ? 2 : 6);
+                            String usd = doc[id]["usd"].isNull() ? "-" : String((double)doc[id]["usd"], (double)doc[id]["usd"] >= 1.0 ? 2 : 6);
+                            out.push_back(CryptoRow{sym, eur, usd});
+                        }
+                        if (comma == -1) break;
+                        start = comma + 1;
+                    }
+                }
+            }
+            http.end();
+        }
+
+        Event result;
+        result.type = EventType::CRYPTO_FETCH_RESULT;
+        result.rows = std::move(out);
+        eventQueue.publishEvent(result);
     });
 }
 
@@ -392,7 +438,7 @@ void CardController::initializeCardTypes() {
     cryptoDef.configInputLabel = "Coin IDs (csv: bitcoin,ethereum,solana)";
     cryptoDef.uiDescription = "Shows live EUR/USD for selected coins";
     cryptoDef.factory = [this](const String& configValue) -> lv_obj_t* {
-        auto* newCard = new CryptoPricesCard(screen, configValue);
+        auto* newCard = new CryptoPricesCard(screen, configValue, eventQueue); // ← pass eventQueue
         if (newCard && newCard->getCard()) {
             CardInstance instance{newCard, newCard->getCard()};
             dynamicCards[CardType::CRYPTO_PRICES].push_back(instance);
@@ -403,6 +449,7 @@ void CardController::initializeCardTypes() {
         return nullptr;
     };
     registerCardType(cryptoDef);
+
 }
 
 void CardController::handleCardConfigChanged() {
