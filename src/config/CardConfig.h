@@ -13,7 +13,8 @@ enum class CardType {
     HELLO_WORLD,  ///< Simple hello world card
     FLAPPY_HOG,   ///< Flappy Hog game card
     QUESTION,     ///< Question trivia card
-    PADDLE        ///< Paddle game card
+    PADDLE,        ///< Paddle game card
+    CRYPTO_PRICE  ///< Cryptocurrency price display card
     // New card types can be added here
 };
 

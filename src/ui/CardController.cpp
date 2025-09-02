@@ -381,6 +381,26 @@ void CardController::initializeCardTypes() {
         return nullptr;
     };
     registerCardType(paddleDef);
+
+    // Register CRYPTO_PRICE card type
+    CardDefinition cryptoDef;
+    cryptoDef.type = CardType::CRYPTO_PRICE;
+    cryptoDef.name = "Crypto Prices";
+    cryptoDef.allowMultiple = false;
+    cryptoDef.needsConfigInput = false;
+    cryptoDef.uiDescription = "Displays current cryptocurrency prices.";
+    cryptoDef.factory = [this](const String& configValue) -> lv_obj_t* {
+        CryptoPriceCard* newCard = new CryptoPriceCard(screen);
+        if (newCard && newCard->getCard()) {
+            CardInstance instance{newCard, newCard->getCard()};
+            dynamicCards[CardType::CRYPTO_PRICE].push_back(instance);
+            cardStack->registerInputHandler(newCard->getCard(), newCard);
+            return newCard->getCard();
+        }
+        delete newCard;
+        return nullptr;
+    };
+    registerCardType(cryptoDef);   
 }
 
 void CardController::handleCardConfigChanged() {
