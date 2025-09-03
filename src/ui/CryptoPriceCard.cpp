@@ -1,5 +1,5 @@
 #include "CryptoPriceCard.h"
-#include "network/CryptoPriceFetcher.cpp"
+#include "../CryptoPriceFetcher.h"
 
 CryptoPriceCard::CryptoPriceCard(lv_obj_t* parent) {
     _card = lv_obj_create(parent);
